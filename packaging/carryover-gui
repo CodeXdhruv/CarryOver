@@ -1,0 +1,428 @@
+#!/usr/bin/env python3
+"""
+Carryover - Native Linux OS Migration & Backup Application
+Built with Libadwaita & GTK4 for native Debian / Ubuntu desktop integration.
+"""
+
+import os
+import sys
+import json
+import shutil
+import subprocess
+import threading
+from pathlib import Path
+
+import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Adw', '1')
+from gi.repository import Gtk, Adw, GLib, Gio
+
+
+def find_carryover_bin():
+    """Locate the carryover CLI executable."""
+    candidates = [
+        shutil.which('carryover'),
+        '/usr/bin/carryover',
+        str(Path(__file__).resolve().parent.parent / 'bin' / 'carryover'),
+        str(Path(__file__).resolve().parent / 'carryover'),
+    ]
+    for c in candidates:
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return 'carryover'
+
+
+class CarryoverWindow(Adw.ApplicationWindow):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.set_title("Carryover")
+        self.set_default_size(860, 680)
+        self.carryover_bin = find_carryover_bin()
+
+        # Main Box
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.set_content(main_box)
+
+        # Header Bar
+        header = Adw.HeaderBar()
+        self.view_stack = Adw.ViewStack()
+
+        # View Switcher in Header (Matches GNOME Adwaita native look)
+        switcher = Adw.ViewSwitcher(
+            stack=self.view_stack,
+            policy=Adw.ViewSwitcherPolicy.WIDE
+        )
+        header.set_title_widget(switcher)
+        main_box.append(header)
+
+        # Pages in ViewStack
+        self.setup_backup_page()
+        self.setup_restore_page()
+        self.setup_mapper_page()
+        self.setup_doctor_page()
+        self.setup_settings_page()
+
+        main_box.append(self.view_stack)
+
+    # ---------------------------------------------------------
+    # TAB 1: BACKUP
+    # ---------------------------------------------------------
+    def setup_backup_page(self):
+        page = Adw.PreferencesPage()
+        self.view_stack.add_titled_with_icon(page, "backup", "Backup", "drive-harddisk-symbolic")
+
+        # System Info Group
+        info_group = Adw.PreferencesGroup(title="System Environment")
+        self.host_row = Adw.ActionRow(title="Operating System", subtitle="Auditing host...")
+        info_group.add(self.host_row)
+        page.add(info_group)
+
+        # Content Selection Group
+        content_group = Adw.PreferencesGroup(title="Content Selection")
+        self.sw_folders = Adw.SwitchRow(title="Personal Folders", subtitle="Documents, Projects, Pictures, Desktop (Excludes build caches)", active=True)
+        self.sw_apps = Adw.SwitchRow(title="Installed Applications", subtitle="Apt native packages, Flatpak, Snap inventory", active=True)
+        self.sw_dotfiles = Adw.SwitchRow(title="Shell & Dotfiles", subtitle=".bashrc, .gitconfig, sensitive configs", active=True)
+        self.sw_projects = Adw.SwitchRow(title="Developer Projects", subtitle="Auto-detects rebuild recipes (npm, cargo, poetry)", active=True)
+
+        content_group.add(self.sw_folders)
+        content_group.add(self.sw_apps)
+        content_group.add(self.sw_dotfiles)
+        content_group.add(self.sw_projects)
+        page.add(content_group)
+
+        # Protection Group
+        protect_group = Adw.PreferencesGroup(title="Target & Encryption")
+        self.backup_dest_entry = Adw.EntryRow(title="Destination Folder")
+        self.backup_dest_entry.set_text(os.path.expanduser("~/carryover-backup"))
+        self.backup_pass_entry = Adw.PasswordEntryRow(title="Encryption Passphrase")
+        self.backup_dryrun_sw = Adw.SwitchRow(title="Dry Run Only", subtitle="Simulate scan and file counts without writing data", active=False)
+
+        protect_group.add(self.backup_dest_entry)
+        protect_group.add(self.backup_pass_entry)
+        protect_group.add(self.backup_dryrun_sw)
+        page.add(protect_group)
+
+        # Action Group
+        action_group = Adw.PreferencesGroup()
+        self.backup_btn = Gtk.Button(label="Start Encrypted Backup", margin_top=8, margin_bottom=8)
+        self.backup_btn.add_css_class("suggested-action")
+        self.backup_btn.add_css_class("pill")
+        self.backup_btn.connect("clicked", self.on_start_backup)
+        action_group.add(self.backup_btn)
+
+        self.backup_progress = Gtk.ProgressBar(margin_top=4, margin_bottom=4)
+        self.backup_progress.set_visible(False)
+        action_group.add(self.backup_progress)
+
+        self.backup_status_lbl = Gtk.Label(label="", xalign=0)
+        self.backup_status_lbl.add_css_class("caption")
+        action_group.add(self.backup_status_lbl)
+
+        page.add(action_group)
+
+        # Auto-query host environment
+        GLib.idle_add(self.query_host_info)
+
+    def query_host_info(self):
+        try:
+            res = subprocess.run([self.carryover_bin, "scan", "--json"], capture_output=True, text=True, timeout=5)
+            if res.stdout:
+                for line in res.stdout.strip().splitlines():
+                    try:
+                        data = json.loads(line)
+                        if "backup_meta" in data:
+                            src = data["backup_meta"]["source"]
+                            self.host_row.set_subtitle(f"{src.get('os_id', 'Linux').capitalize()} {src.get('os_version', '')} ({src.get('arch', '')}) · User: {src.get('username', '')} · PM: {src.get('package_manager', '')}")
+                            return
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        self.host_row.set_subtitle(f"Linux {os.uname().machine} · User: {os.environ.get('USER', 'user')}")
+
+    def on_start_backup(self, _):
+        dest = self.backup_dest_entry.get_text().strip()
+        password = self.backup_pass_entry.get_text()
+        dry_run = self.backup_dryrun_sw.get_active()
+
+        if not password and not dry_run:
+            self.backup_status_lbl.set_text("Error: Passphrase is required to encrypt backup repository.")
+            return
+
+        self.backup_btn.set_sensitive(False)
+        self.backup_progress.set_visible(True)
+        self.backup_progress.pulse()
+        self.backup_status_lbl.set_text("Executing backup pipeline via restic engine...")
+
+        def worker():
+            cmd = [self.carryover_bin, "backup", "--dest", dest, "--json"]
+            if password:
+                cmd.extend(["--password", password])
+            if dry_run:
+                cmd.append("--dry-run")
+
+            try:
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                stdout, stderr = proc.communicate()
+                GLib.idle_add(self.on_backup_finished, proc.returncode, stdout, stderr, dry_run)
+            except Exception as e:
+                GLib.idle_add(self.on_backup_finished, 1, "", str(e), dry_run)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_backup_finished(self, returncode, stdout, stderr, dry_run):
+        self.backup_btn.set_sensitive(True)
+        self.backup_progress.set_visible(False)
+        if returncode == 0:
+            status_text = "Backup simulation successful." if dry_run else "Backup completed & verified with restic."
+            self.backup_status_lbl.set_text(status_text)
+        else:
+            err_msg = stderr.strip() or stdout.strip() or "Process failed"
+            self.backup_status_lbl.set_text(f"Notice: {err_msg}")
+
+    # ---------------------------------------------------------
+    # TAB 2: RESTORE
+    # ---------------------------------------------------------
+    def setup_restore_page(self):
+        page = Adw.PreferencesPage()
+        self.view_stack.add_titled_with_icon(page, "restore", "Restore", "view-refresh-symbolic")
+
+        repo_group = Adw.PreferencesGroup(title="Repository Parameters")
+        self.restore_dest_entry = Adw.EntryRow(title="Backup Repository Location")
+        self.restore_dest_entry.set_text(os.path.expanduser("~/carryover-backup"))
+        self.restore_snap_entry = Adw.EntryRow(title="Snapshot Identifier")
+        self.restore_snap_entry.set_text("latest")
+        self.restore_pass_entry = Adw.PasswordEntryRow(title="Decryption Passphrase")
+
+        repo_group.add(self.restore_dest_entry)
+        repo_group.add(self.restore_snap_entry)
+        repo_group.add(self.restore_pass_entry)
+        page.add(repo_group)
+
+        policy_group = Adw.PreferencesGroup(title="Conflict Strategy & Scope")
+        self.conflict_combo = Adw.ComboRow(title="Conflict Resolution Policy")
+        model = Gtk.StringList.new(["keep_both (create timestamped safety copy)", "overwrite", "skip (preserve existing files)"])
+        self.conflict_combo.set_model(model)
+        self.restore_plan_only_sw = Adw.SwitchRow(title="Plan Only (Dry Run)", subtitle="Simulate extraction, package resolution, and file placement", active=True)
+
+        policy_group.add(self.conflict_combo)
+        policy_group.add(self.restore_plan_only_sw)
+        page.add(policy_group)
+
+        action_group = Adw.PreferencesGroup()
+        self.restore_btn = Gtk.Button(label="Run Restore Pipeline", margin_top=8, margin_bottom=8)
+        self.restore_btn.add_css_class("suggested-action")
+        self.restore_btn.add_css_class("pill")
+        self.restore_btn.connect("clicked", self.on_start_restore)
+        action_group.add(self.restore_btn)
+
+        self.restore_status_lbl = Gtk.Label(label="", xalign=0)
+        self.restore_status_lbl.add_css_class("caption")
+        action_group.add(self.restore_status_lbl)
+
+        page.add(action_group)
+
+    def on_start_restore(self, _):
+        dest = self.restore_dest_entry.get_text().strip()
+        snap = self.restore_snap_entry.get_text().strip() or "latest"
+        password = self.restore_pass_entry.get_text()
+        plan_only = self.restore_plan_only_sw.get_active()
+        policy_idx = self.conflict_combo.get_selected()
+        policy = ["keep_both", "overwrite", "skip"][policy_idx]
+
+        if not password:
+            self.restore_status_lbl.set_text("Error: Passphrase required to decrypt snapshot.")
+            return
+
+        self.restore_btn.set_sensitive(False)
+        self.restore_status_lbl.set_text("Restoring system snapshot...")
+
+        def worker():
+            cmd = [self.carryover_bin, "restore", "--dest", dest, "--snapshot", snap, "--password", password, "--conflict", policy, "--json"]
+            if plan_only:
+                cmd.append("--plan-only")
+
+            try:
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                stdout, stderr = proc.communicate()
+                GLib.idle_add(self.on_restore_finished, proc.returncode, stdout, stderr, plan_only)
+            except Exception as e:
+                GLib.idle_add(self.on_restore_finished, 1, "", str(e), plan_only)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_restore_finished(self, returncode, stdout, stderr, plan_only):
+        self.restore_btn.set_sensitive(True)
+        if returncode == 0:
+            msg = "Plan generated successfully. No files changed." if plan_only else "Restoration pipeline completed successfully."
+            self.restore_status_lbl.set_text(msg)
+        else:
+            self.restore_status_lbl.set_text(f"Notice: {stderr.strip() or stdout.strip() or 'Execution finished'}")
+
+    # ---------------------------------------------------------
+    # TAB 3: MAPPER
+    # ---------------------------------------------------------
+    def setup_mapper_page(self):
+        page = Adw.PreferencesPage()
+        self.view_stack.add_titled_with_icon(page, "mapper", "Mapper", "emblem-synchronizing-symbolic")
+
+        group = Adw.PreferencesGroup(title="Cross-Distribution Package Translation")
+        self.pkg_input = Adw.EntryRow(title="Package Name")
+        self.pkg_input.set_text("build-essential")
+
+        self.from_pm_combo = Adw.ComboRow(title="Source Package Manager")
+        self.from_pm_combo.set_model(Gtk.StringList.new(["apt (Debian/Ubuntu)", "pacman (Arch)", "dnf (Fedora)", "zypper (openSUSE)"]))
+        self.from_pm_combo.set_selected(0)
+
+        self.to_pm_combo = Adw.ComboRow(title="Target Package Manager")
+        self.to_pm_combo.set_model(Gtk.StringList.new(["pacman (Arch)", "dnf (Fedora)", "apt (Debian/Ubuntu)", "zypper (openSUSE)"]))
+        self.to_pm_combo.set_selected(0)
+
+        group.add(self.pkg_input)
+        group.add(self.from_pm_combo)
+        group.add(self.to_pm_combo)
+
+        btn_translate = Gtk.Button(label="Translate Package", margin_top=8)
+        btn_translate.add_css_class("suggested-action")
+        btn_translate.connect("clicked", self.on_translate_package)
+        group.add(btn_translate)
+
+        self.mapper_result_row = Adw.ActionRow(title="Resolution", subtitle="Press Translate to resolve mapping.")
+        group.add(self.mapper_result_row)
+
+        page.add(group)
+
+        # Quick Test Candidates
+        quick_group = Adw.PreferencesGroup(title="Quick Candidates")
+        box = Gtk.FlowBox(margin_top=4, margin_bottom=4, selection_mode=Gtk.SelectionMode.NONE)
+        candidates = ["build-essential", "git", "neovim", "ripgrep", "libssl-dev", "python3-pip", "docker.io", "curl"]
+        for c in candidates:
+            btn = Gtk.Button(label=c)
+            btn.connect("clicked", lambda _, name=c: self.set_and_translate_pkg(name))
+            box.append(btn)
+        quick_group.add(box)
+        page.add(quick_group)
+
+    def set_and_translate_pkg(self, name):
+        self.pkg_input.set_text(name)
+        self.on_translate_package(None)
+
+    def on_translate_package(self, _):
+        pkg = self.pkg_input.get_text().strip()
+        from_pm = ["apt", "pacman", "dnf", "zypper"][self.from_pm_combo.get_selected()]
+        to_pm = ["pacman", "dnf", "apt", "zypper"][self.to_pm_combo.get_selected()]
+
+        try:
+            res = subprocess.run([self.carryover_bin, "map", pkg, "--from", from_pm, "--to", to_pm, "--json"], capture_output=True, text=True)
+            if res.returncode == 0:
+                data = json.loads(res.stdout)
+                target = data.get("target_name", pkg)
+                conf = data.get("confidence", "heuristic")
+                reason = data.get("reason", "")
+                self.mapper_result_row.set_title(f"{pkg}  ➔  {target}")
+                self.mapper_result_row.set_subtitle(f"Confidence: {conf.upper()} · Reason: {reason}")
+            else:
+                self.mapper_result_row.set_title("Mapping unresolved")
+                self.mapper_result_row.set_subtitle(res.stderr.strip() or "Not found")
+        except Exception as e:
+            self.mapper_result_row.set_subtitle(str(e))
+
+    # ---------------------------------------------------------
+    # TAB 4: DOCTOR
+    # ---------------------------------------------------------
+    def setup_doctor_page(self):
+        page = Adw.PreferencesPage()
+        self.view_stack.add_titled_with_icon(page, "doctor", "Doctor", "preferences-system-details-symbolic")
+
+        self.doctor_group = Adw.PreferencesGroup(title="Preflight Health Audit")
+        page.add(self.doctor_group)
+
+        btn_run = Gtk.Button(label="Run System Diagnostics", margin_top=4, margin_bottom=8)
+        btn_run.add_css_class("suggested-action")
+        btn_run.connect("clicked", self.on_run_doctor)
+        self.doctor_group.add(btn_run)
+
+        self.doctor_rows = []
+        GLib.idle_add(self.on_run_doctor, None)
+
+    def on_run_doctor(self, _):
+        for r in self.doctor_rows:
+            self.doctor_group.remove(r)
+        self.doctor_rows.clear()
+
+        try:
+            res = subprocess.run([self.carryover_bin, "doctor", "--json"], capture_output=True, text=True, timeout=8)
+            if res.returncode == 0 or res.stdout:
+                data = json.loads(res.stdout)
+                checks = data.get("checks", [])
+                for chk in checks:
+                    status = chk.get("status", "pass")
+                    icon = "✓ " if status == "pass" else "! "
+                    row = Adw.ActionRow(
+                        title=f"{icon}{chk.get('name', '').replace('_', ' ').title()}",
+                        subtitle=f"{chk.get('message', '')} {chk.get('details', '')}"
+                    )
+                    self.doctor_group.add(row)
+                    self.doctor_rows.append(row)
+                return
+        except Exception as e:
+            err_row = Adw.ActionRow(title="Diagnostic error", subtitle=str(e))
+            self.doctor_group.add(err_row)
+            self.doctor_rows.append(err_row)
+
+    # ---------------------------------------------------------
+    # TAB 5: SETTINGS & EXPORT
+    # ---------------------------------------------------------
+    def setup_settings_page(self):
+        page = Adw.PreferencesPage()
+        self.view_stack.add_titled_with_icon(page, "settings", "Settings", "emblem-system-symbolic")
+
+        prefs_group = Adw.PreferencesGroup(title="Migration Exclusions")
+        row_excludes = Adw.EntryRow(title="Global Skip Patterns")
+        row_excludes.set_text("node_modules, .gradle, build, dist, target, venv, .venv, __pycache__, .cache")
+        prefs_group.add(row_excludes)
+        page.add(prefs_group)
+
+        export_group = Adw.PreferencesGroup(title="Headless Automation (Ansible)")
+        export_row = Adw.ActionRow(
+            title="Export Ansible Playbook",
+            subtitle="Generate an idempotent playbook.yml to provision new systems headlessly."
+        )
+        btn_export = Gtk.Button(label="Export Playbook", valign=Gtk.Align.CENTER)
+        btn_export.connect("clicked", self.on_export_ansible)
+        export_row.add_suffix(btn_export)
+        export_group.add(export_row)
+        page.add(export_group)
+
+    def on_export_ansible(self, _):
+        out_path = os.path.expanduser("~/carryover-playbook.yml")
+        try:
+            res = subprocess.run([self.carryover_bin, "export", "--out", out_path], capture_output=True, text=True)
+            toast = Adw.Toast.new(f"Exported playbook to {out_path}")
+            self.add_toast(toast)
+        except Exception as e:
+            toast = Adw.Toast.new(f"Export failed: {e}")
+            self.add_toast(toast)
+
+
+class CarryoverApp(Adw.Application):
+    def __init__(self):
+        super().__init__(
+            application_id="dev.carryover.Desktop",
+            flags=Gio.ApplicationFlags.FLAGS_NONE
+        )
+
+    def do_activate(self):
+        win = self.props.active_window
+        if not win:
+            win = CarryoverWindow(application=self)
+        win.present()
+
+
+def main():
+    app = CarryoverApp()
+    return app.run(sys.argv)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
