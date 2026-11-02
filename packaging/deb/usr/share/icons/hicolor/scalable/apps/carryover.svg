@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F7CFF" />
+      <stop offset="100%" stop-color="#2D55D8" />
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#grad)" />
+  <!-- Folder shape -->
+  <path d="M52 84 C52 74 60 66 70 66 L108 66 L124 82 L186 82 C196 82 204 90 204 100 L204 172 C204 182 196 190 186 190 L70 190 C60 190 52 182 52 172 Z" fill="#FFFFFF" fill-opacity="0.25" />
+  <!-- Migration arrows -->
+  <path d="M96 136 L128 104 L160 136 M128 108 L128 168" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+</svg>

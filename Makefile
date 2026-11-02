@@ -32,7 +32,7 @@ test-matrix:
 
 package:
 	@echo "Packaging AppImage, deb, rpm, flatpak..."
-	@mkdir -p dist
+	@./packaging/build-packages.sh
 
 clean:
 	rm -rf $(BIN_DIR) dist

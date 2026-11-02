@@ -1,0 +1,18 @@
+# Maintainer: Carryover Authors <authors@carryover.dev>
+pkgname=carryover-bin
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Linux OS Migration Application: switch distros without losing personal files, apps, or project recipes"
+arch=('x86_64')
+url="https://github.com/carryover/carryover"
+license=('MIT')
+depends=('ca-certificates' 'restic')
+provides=('carryover')
+conflicts=('carryover')
+
+package() {
+  install -Dm755 "${srcdir}/bin/carryover" "${pkgdir}/usr/bin/carryover"
+  install -Dm644 "${srcdir}/packaging/carryover.desktop" "${pkgdir}/usr/share/applications/carryover.desktop"
+  install -Dm644 "${srcdir}/packaging/carryover.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/carryover.svg"
+  install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

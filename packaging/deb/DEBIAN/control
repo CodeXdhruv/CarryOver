@@ -1,0 +1,11 @@
+Package: carryover
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Carryover Authors <authors@carryover.dev>
+Depends: ca-certificates
+Description: Linux OS Migration Application
+ Carryover helps users switch Linux distributions without losing personal data.
+ Backs up personal files, configs, apps, and developer project rebuild recipes.
+ Includes cross-distro package mapping and restic encrypted backup.

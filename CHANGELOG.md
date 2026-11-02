@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Milestone M7: Packaging & Distribution
+- Created `.desktop` entry and SVG vector app icon for Linux desktop environments.
+- Implemented AppImage packaging scaffold with custom `AppRun` integration launcher.
+- Implemented Debian (`.deb`) package specifications and automated packaging tool (`packaging/build-packages.sh`).
+- Implemented Red Hat (`.rpm`) spec file (`packaging/rpm/carryover.spec`).
+- Implemented Flatpak manifest (`packaging/flatpak/dev.carryover.Carryover.yml`) targeting Flathub runtime.
+- Implemented Arch Linux `PKGBUILD` (`packaging/arch/PKGBUILD`).
+- Added automated `make package` rule building production `.deb` and AppImage AppDir archives.
 ### Added - Milestone M6: Tauri Desktop UI & Design System
 - Built Tauri 2 desktop application scaffold with Svelte, TypeScript, Vite, and Tailwind CSS.
 - Implemented design system adhering to specification: minimal aesthetics, Inter typography, `#4F7CFF` accent token, 12px radius, auto light/dark theme, and 880×620 window constraints.

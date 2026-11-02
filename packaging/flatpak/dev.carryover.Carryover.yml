@@ -1,0 +1,39 @@
+app-id: dev.carryover.Carryover
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: carryover
+finish-args:
+  # Home directory access for scanning and restoring personal files
+  - --filesystem=home
+  # Access host Flatpak to manage and inspect installed host apps
+  - --talk-name=org.freedesktop.Flatpak
+  # Network access for downloading packages during restore
+  - --share=network
+  # Display server access
+  - --socket=wayland
+  - --socket=fallback-x11
+
+modules:
+  - name: restic
+    buildsystem: simple
+    build-commands:
+      - install -m 755 restic /app/bin/restic
+    sources:
+      - type: file
+        url: https://github.com/restic/restic/releases/download/v0.17.0/restic_0.17.0_linux_amd64.bz2
+        sha256: 0e729a738bf5be67ba4f37803a58e65893d58ef51ef40409a896aa3346e9df95
+
+  - name: carryover
+    buildsystem: simple
+    build-commands:
+      - install -D -m 755 carryover /app/bin/carryover
+      - install -D -m 644 carryover.desktop /app/share/applications/dev.carryover.Carryover.desktop
+      - install -D -m 644 carryover.svg /app/share/icons/hicolor/scalable/apps/dev.carryover.Carryover.svg
+    sources:
+      - type: file
+        path: ../../bin/carryover
+      - type: file
+        path: ../carryover.desktop
+      - type: file
+        path: ../carryover.svg
