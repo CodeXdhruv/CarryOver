@@ -4,8 +4,9 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: Carryover Authors <authors@carryover.dev>
-Depends: ca-certificates
+Depends: ca-certificates, restic, python3, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1
+Recommends: xdg-utils
 Description: Linux OS Migration Application
  Carryover helps users switch Linux distributions without losing personal data.
  Backs up personal files, configs, apps, and developer project rebuild recipes.
- Includes cross-distro package mapping and restic encrypted backup.
+ Includes native GTK4/Adwaita desktop UI, cross-distro package mapping, and restic encrypted backup.

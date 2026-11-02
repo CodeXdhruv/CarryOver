@@ -8,9 +8,9 @@ VERSION="1.0.0"
 
 mkdir -p "${DIST_DIR}"
 
-echo "==> Building binary..."
+echo "==> Building UI and binary with embedded desktop UI..."
 cd "${ROOT_DIR}"
-make build-engine
+make build
 
 BIN="${ROOT_DIR}/bin/carryover"
 if [ ! -f "${BIN}" ]; then
@@ -25,7 +25,8 @@ mkdir -p "${DEB_STAGING}/usr/share/applications"
 mkdir -p "${DEB_STAGING}/usr/share/icons/hicolor/scalable/apps"
 
 cp "${BIN}" "${DEB_STAGING}/usr/bin/carryover"
-chmod 755 "${DEB_STAGING}/usr/bin/carryover"
+cp "${PKG_DIR}/carryover-gui" "${DEB_STAGING}/usr/bin/carryover-gui"
+chmod 755 "${DEB_STAGING}/usr/bin/carryover" "${DEB_STAGING}/usr/bin/carryover-gui"
 cp "${PKG_DIR}/carryover.desktop" "${DEB_STAGING}/usr/share/applications/"
 cp "${PKG_DIR}/carryover.svg" "${DEB_STAGING}/usr/share/icons/hicolor/scalable/apps/"
 
@@ -40,7 +41,8 @@ mkdir -p "${APPIMAGE_DIR}/usr/share/applications"
 mkdir -p "${APPIMAGE_DIR}/usr/share/icons/hicolor/scalable/apps"
 
 cp "${BIN}" "${APPIMAGE_DIR}/usr/bin/carryover"
-chmod 755 "${APPIMAGE_DIR}/usr/bin/carryover"
+cp "${PKG_DIR}/carryover-gui" "${APPIMAGE_DIR}/usr/bin/carryover-gui"
+chmod 755 "${APPIMAGE_DIR}/usr/bin/carryover" "${APPIMAGE_DIR}/usr/bin/carryover-gui"
 cp "${PKG_DIR}/carryover.desktop" "${APPIMAGE_DIR}/"
 cp "${PKG_DIR}/carryover.desktop" "${APPIMAGE_DIR}/usr/share/applications/"
 cp "${PKG_DIR}/carryover.svg" "${APPIMAGE_DIR}/"
