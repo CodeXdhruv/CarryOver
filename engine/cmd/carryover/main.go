@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/carryover/carryover/engine/internal/backup"
 	"github.com/carryover/carryover/engine/internal/events"
+	"github.com/carryover/carryover/engine/internal/manifest"
 	"github.com/carryover/carryover/engine/internal/scanner"
 	"github.com/spf13/cobra"
 )
@@ -38,17 +40,16 @@ func main() {
 	scanCmd.Flags().StringVar(&rootFlag, "root", "/", "Root filesystem path for scanning (useful for containers/testing)")
 	scanCmd.Flags().StringVar(&homeFlag, "home", "", "User home directory path for scanning")
 
-	// backup placeholder
+	// backup command
 	backupCmd := &cobra.Command{
 		Use:   "backup",
 		Short: "Perform backup to specified destination",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("backup engine will be initialized in milestone M2")
-		},
+		RunE:  runBackup,
 	}
 	backupCmd.Flags().String("dest", "", "Destination path or remote")
-	backupCmd.Flags().String("select", "", "Path to selection.yaml")
+	backupCmd.Flags().String("select", "", "Path to selection manifest / YAML")
 	backupCmd.Flags().String("password-file", "", "Path to password file")
+	backupCmd.Flags().String("password", "", "Backup encryption password")
 	backupCmd.Flags().Bool("dry-run", false, "Simulate backup without writing data")
 
 	// restore placeholder
@@ -65,25 +66,25 @@ func main() {
 	restoreCmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	restoreCmd.Flags().String("only", "", "Comma-separated list of items to restore: files,dotfiles,apps,projects")
 
-	// list placeholder
+	// list command
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List snapshots in backup destination",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("list will be initialized in milestone M2")
-		},
+		RunE:  runList,
 	}
 	listCmd.Flags().String("dest", "", "Backup destination")
+	listCmd.Flags().String("password-file", "", "Path to password file")
+	listCmd.Flags().String("password", "", "Backup encryption password")
 
-	// verify placeholder
+	// verify command
 	verifyCmd := &cobra.Command{
 		Use:   "verify",
 		Short: "Verify backup integrity and manifest checksum",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("verify will be initialized in milestone M2")
-		},
+		RunE:  runVerify,
 	}
 	verifyCmd.Flags().String("dest", "", "Backup destination")
+	verifyCmd.Flags().String("password-file", "", "Path to password file")
+	verifyCmd.Flags().String("password", "", "Backup encryption password")
 
 	// map placeholder
 	mapCmd := &cobra.Command{
@@ -228,5 +229,168 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	return nil
+}
+
+func runBackup(cmd *cobra.Command, args []string) error {
+	dest, _ := cmd.Flags().GetString("dest")
+	if dest == "" {
+		return fmt.Errorf("--dest is required")
+	}
+	selectFile, _ := cmd.Flags().GetString("select")
+	passwordFile, _ := cmd.Flags().GetString("password-file")
+	password, _ := cmd.Flags().GetString("password")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+	if password == "" && passwordFile == "" {
+		password = os.Getenv("RESTIC_PASSWORD")
+	}
+	if password == "" && passwordFile == "" {
+		return fmt.Errorf("either --password, --password-file, or RESTIC_PASSWORD env var is required")
+	}
+
+	emitter := events.NewEmitter(os.Stdout, jsonFlag)
+
+	// If selectFile is provided, load it; otherwise run system scan to get defaults
+	var m *manifest.Manifest
+	if selectFile != "" {
+		var err error
+		m, err = manifest.LoadYAML(selectFile)
+		if err != nil {
+			return fmt.Errorf("failed to load selection manifest: %w", err)
+		}
+	} else {
+		var err error
+		m, err = scanner.ScanSystem(scanner.ScanOptions{
+			RootDir: rootFlag,
+			HomeDir: homeFlag,
+			Emitter: emitter,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to generate backup selection from scan: %w", err)
+		}
+	}
+
+	res, err := backup.RunBackupPipeline(backup.BackupOptions{
+		Dest:         dest,
+		Password:     password,
+		PasswordFile: passwordFile,
+		Manifest:     m,
+		DryRun:       dryRun,
+		Emitter:      emitter,
+	})
+	if err != nil {
+		if jsonFlag {
+			_ = emitter.Emit(events.Event{
+				Type:    events.TypeError,
+				Message: err.Error(),
+			})
+		}
+		return err
+	}
+
+	if !jsonFlag {
+		fmt.Println("Carryover Backup Complete")
+		fmt.Println("-------------------------")
+		fmt.Printf("Destination:     %s\n", dest)
+		fmt.Printf("Snapshot ID:     %s\n", res.SnapshotID)
+		fmt.Printf("New Files:       %d\n", res.FilesNew)
+		fmt.Printf("Changed Files:   %d\n", res.FilesChanged)
+		fmt.Printf("Total Bytes:     %d MB\n", res.TotalBytesProcessed/(1024*1024))
+		fmt.Printf("Manifest SHA256: %s\n", res.ManifestSHA256)
+	}
+
+	return nil
+}
+
+func runList(cmd *cobra.Command, args []string) error {
+	dest, _ := cmd.Flags().GetString("dest")
+	if dest == "" {
+		return fmt.Errorf("--dest is required")
+	}
+	passwordFile, _ := cmd.Flags().GetString("password-file")
+	password, _ := cmd.Flags().GetString("password")
+	if password == "" && passwordFile == "" {
+		password = os.Getenv("RESTIC_PASSWORD")
+	}
+	if password == "" && passwordFile == "" {
+		return fmt.Errorf("either --password, --password-file, or RESTIC_PASSWORD env var is required")
+	}
+
+	runner, err := backup.NewResticRunner("")
+	if err != nil {
+		return err
+	}
+
+	pwFile := passwordFile
+	if pwFile == "" {
+		tmp, err := os.CreateTemp("", "carryover-pw-*")
+		if err != nil {
+			return err
+		}
+		pwFile = tmp.Name()
+		defer os.Remove(pwFile)
+		_, _ = tmp.WriteString(password)
+		_ = tmp.Close()
+	}
+
+	snapshots, err := runner.ListSnapshots(dest, pwFile)
+	if err != nil {
+		return err
+	}
+
+	if jsonFlag {
+		data, _ := json.Marshal(snapshots)
+		fmt.Println(string(data))
+	} else {
+		fmt.Printf("Snapshots in %s:\n", dest)
+		for _, s := range snapshots {
+			fmt.Printf("ID: %s  Time: %s  Host: %s  Tags: %s\n", s.ShortID, s.Time.Format("2006-01-02 15:04:05"), s.Hostname, strings.Join(s.Tags, ","))
+		}
+	}
+	return nil
+}
+
+func runVerify(cmd *cobra.Command, args []string) error {
+	dest, _ := cmd.Flags().GetString("dest")
+	if dest == "" {
+		return fmt.Errorf("--dest is required")
+	}
+	passwordFile, _ := cmd.Flags().GetString("password-file")
+	password, _ := cmd.Flags().GetString("password")
+	if password == "" && passwordFile == "" {
+		password = os.Getenv("RESTIC_PASSWORD")
+	}
+	if password == "" && passwordFile == "" {
+		return fmt.Errorf("either --password, --password-file, or RESTIC_PASSWORD env var is required")
+	}
+
+	runner, err := backup.NewResticRunner("")
+	if err != nil {
+		return err
+	}
+
+	pwFile := passwordFile
+	if pwFile == "" {
+		tmp, err := os.CreateTemp("", "carryover-pw-*")
+		if err != nil {
+			return err
+		}
+		pwFile = tmp.Name()
+		defer os.Remove(pwFile)
+		_, _ = tmp.WriteString(password)
+		_ = tmp.Close()
+	}
+
+	if err := runner.VerifyRepo(dest, pwFile, 10); err != nil {
+		return err
+	}
+
+	if jsonFlag {
+		emitter := events.NewEmitter(os.Stdout, true)
+		emitter.Done("ok", dest)
+	} else {
+		fmt.Printf("Repository %s verified successfully (10%% data subset checked).\n", dest)
+	}
 	return nil
 }
