@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -120,11 +121,56 @@ func main() {
 		RunE:  runDoctor,
 	}
 
-	rootCmd.AddCommand(scanCmd, backupCmd, restoreCmd, listCmd, verifyCmd, mapCmd, exportCmd, doctorCmd)
+	// ui command
+	uiCmd := &cobra.Command{
+		Use:   "ui",
+		Short: "Launch the graphical desktop application",
+		RunE:  runUI,
+	}
+
+	rootCmd.RunE = runUI
+	rootCmd.AddCommand(scanCmd, backupCmd, restoreCmd, listCmd, verifyCmd, mapCmd, exportCmd, doctorCmd, uiCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func runUI(cmd *cobra.Command, args []string) error {
+	// If in headless terminal without DISPLAY/WAYLAND_DISPLAY, show help
+	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+		fmt.Println("No graphical display detected. Available CLI commands:")
+		return cmd.Root().Help()
+	}
+
+	guiBin := "carryover-gui"
+	if _, err := exec.LookPath(guiBin); err != nil {
+		// Look relative to executable or workspace
+		if exe, err := os.Executable(); err == nil {
+			dir := filepath.Dir(exe)
+			candidates := []string{
+				filepath.Join(dir, "carryover-gui"),
+				filepath.Join(dir, "..", "packaging", "carryover-gui"),
+				filepath.Join(dir, "..", "bin", "carryover-gui"),
+				"/usr/bin/carryover-gui",
+			}
+			for _, c := range candidates {
+				if _, err := os.Stat(c); err == nil {
+					guiBin = c
+					break
+				}
+			}
+		}
+	}
+
+	guiCmd := exec.Command(guiBin, args...)
+	guiCmd.Stdout = os.Stdout
+	guiCmd.Stderr = os.Stderr
+	guiCmd.Stdin = os.Stdin
+	if err := guiCmd.Run(); err != nil {
+		return fmt.Errorf("failed to launch Carryover desktop application: %w", err)
+	}
+	return nil
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
