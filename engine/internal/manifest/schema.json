@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://carryover.dev/schemas/manifest.schema.json",
+  "title": "CarryoverManifest",
+  "description": "Schema for Carryover migration manifest files",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "backup_meta"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "backup_meta": {
+      "type": "object",
+      "required": [
+        "id",
+        "created",
+        "carryover_version",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "created": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "carryover_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "object",
+          "required": [
+            "hostname",
+            "os_id",
+            "package_manager",
+            "username",
+            "home"
+          ],
+          "properties": {
+            "hostname": { "type": "string", "minLength": 1 },
+            "os_id": { "type": "string", "minLength": 1 },
+            "os_version": { "type": "string" },
+            "arch": { "type": "string" },
+            "package_manager": { "type": "string", "minLength": 1 },
+            "username": { "type": "string", "minLength": 1 },
+            "home": { "type": "string", "minLength": 1 },
+            "shell": { "type": "string" },
+            "desktop": { "type": "string" }
+          }
+        }
+      }
+    },
+    "folders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string" },
+          "size_bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "exclude": {
+      "type": "object",
+      "properties": {
+        "global": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "per_project": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "dotfiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string" },
+          "sensitive": { "type": "boolean" },
+          "size_bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "shell": {
+      "type": "object",
+      "properties": {
+        "default": { "type": "string" },
+        "frameworks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "env_exports": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "path_additions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "aliases": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "apps": {
+      "type": "object",
+      "properties": {
+        "apt": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "gui": { "type": "boolean" }
+            }
+          }
+        },
+        "dnf": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "gui": { "type": "boolean" }
+            }
+          }
+        },
+        "pacman": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "repo": { "type": "string" },
+              "gui": { "type": "boolean" }
+            }
+          }
+        },
+        "zypper": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "gui": { "type": "boolean" }
+            }
+          }
+        },
+        "snap": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "classic": { "type": "boolean" },
+              "version": { "type": "string" }
+            }
+          }
+        },
+        "flatpak": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string" },
+              "origin": { "type": "string" },
+              "version": { "type": "string" }
+            }
+          }
+        },
+        "npm_global": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "pip_user": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "cargo": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "vscode_extensions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "type", "rebuild"],
+        "properties": {
+          "path": { "type": "string" },
+          "type": { "type": "string" },
+          "package_manager": { "type": "string" },
+          "rebuild": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "git": {
+            "type": "object",
+            "properties": {
+              "remote": { "type": "string" },
+              "branch": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "checksums": {
+      "type": "object",
+      "properties": {
+        "manifest_sha256": { "type": "string" }
+      }
+    }
+  }
+}

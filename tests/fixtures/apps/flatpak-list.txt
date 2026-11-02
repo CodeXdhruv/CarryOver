@@ -1,0 +1,3 @@
+org.telegram.desktop	flathub
+com.spotify.Client	flathub
+org.mozilla.firefox	flathub

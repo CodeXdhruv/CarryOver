@@ -1,0 +1,7 @@
+Name               Version                Rev    Tracking         Publisher   Notes
+bare               1.0                    5      latest/stable    canonical✓  base
+canonical-livepatch 10.8.2                282    latest/stable    canonical✓  -
+core22             20240111               1122   latest/stable    canonical✓  base
+snapd              2.61.3                 21184  latest/stable    canonical✓  snapd
+code               dc96b837               159    latest/stable    vscode✓     classic
+spotify            1.2.31.1205.g4d25fa1c  77     latest/stable    spotify✓    -

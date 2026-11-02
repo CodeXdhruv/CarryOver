@@ -1,0 +1,8 @@
+build-essential
+curl
+git
+htop
+neovim
+ripgrep
+vlc
+zsh

@@ -1,0 +1,7 @@
+base-devel
+git
+curl
+neovim
+vlc
+ripgrep
+zsh

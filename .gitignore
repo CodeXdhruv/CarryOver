@@ -1,0 +1,32 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+/tmp/
+
+# Go
+vendor/
+
+# Node / UI
+node_modules/
+dist/
+.svelte-kit/
+build/
+
+# Tauri
+src-tauri/target/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
