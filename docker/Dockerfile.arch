@@ -1,0 +1,13 @@
+FROM archlinux:latest
+RUN pacman -Syu --noconfirm --needed \
+    ca-certificates curl git restic sudo which \
+    && pacman -Scc --noconfirm
+
+RUN useradd -m -s /bin/bash testuser && \
+    echo "testuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+USER testuser
+WORKDIR /home/testuser
+ENV HOME=/home/testuser
+
+CMD ["bash"]

@@ -1,0 +1,34 @@
+services:
+  ubuntu:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ubuntu
+    volumes:
+      - ..:/workspace:ro
+      - shared-data:/shared
+    command: /workspace/scripts/test-matrix.sh ubuntu
+
+  fedora:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.fedora
+    volumes:
+      - ..:/workspace:ro
+      - shared-data:/shared
+    command: /workspace/scripts/test-matrix.sh fedora
+    depends_on:
+      - ubuntu
+
+  arch:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.arch
+    volumes:
+      - ..:/workspace:ro
+      - shared-data:/shared
+    command: /workspace/scripts/test-matrix.sh arch
+    depends_on:
+      - fedora
+
+volumes:
+  shared-data:

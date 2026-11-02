@@ -491,7 +491,11 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	policy := restore.ConflictPolicy(conflictStr)
+	conflictNormalized := strings.ReplaceAll(strings.ToLower(conflictStr), "-", "_")
+	policy := restore.ConflictPolicy(conflictNormalized)
+	if policy != restore.ConflictKeepBoth && policy != restore.ConflictOverwrite && policy != restore.ConflictSkip {
+		policy = restore.ConflictKeepBoth
+	}
 	timestamp := time.Now().UTC().Format("20060102T150405Z")
 
 	// 4. Build restore plan

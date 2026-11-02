@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Milestone M8: Docker Lab & Continuous Integration
+- Created multi-distribution test environments in `docker/`: Ubuntu 24.04 (`Dockerfile.ubuntu`), Fedora 40 (`Dockerfile.fedora`), and Arch Linux (`Dockerfile.arch`).
+- Created Docker Compose orchestration (`docker/docker-compose.yml`) for cross-distro migration verification with shared volumes.
+- Created `scripts/test-matrix.sh` executing automated end-to-end backup, restore, conflict movement, and package mapping across distros.
+- Added GitHub Actions CI pipeline (`.github/workflows/ci.yml`) covering engine tests, vet, UI build, integration tests, and packaging.
+- Added GitHub Actions Release pipeline (`.github/workflows/release.yml`) producing release packages and SHA256 checksums.
 ### Added - Milestone M7: Packaging & Distribution
 - Created `.desktop` entry and SVG vector app icon for Linux desktop environments.
 - Implemented AppImage packaging scaffold with custom `AppRun` integration launcher.
