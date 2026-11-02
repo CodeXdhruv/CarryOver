@@ -12,6 +12,7 @@ import (
 
 	"github.com/carryover/carryover/engine/internal/backup"
 	"github.com/carryover/carryover/engine/internal/events"
+	"github.com/carryover/carryover/engine/internal/rebuild"
 )
 
 // RestoreReport summarizes the outcome of executing a restore plan
@@ -319,6 +320,33 @@ func ExecuteRestorePlan(
 
 	// 3. Fix permissions
 	_ = FixSSHPermissions(filepath.Join(targetHome, ".ssh"))
+
+	// 4. Reinstall shell frameworks before final dotfile usage
+	if len(plan.ShellFrameworks) > 0 {
+		emitter.Phase("reinstall_frameworks", "start")
+		rebuild.ReinstallAllFrameworks(targetHome, plan.ShellFrameworks, emitter)
+		emitter.Phase("reinstall_frameworks", "complete")
+	}
+
+	// 5. Rebuild projects
+	if len(plan.Projects) > 0 {
+		emitter.Phase("rebuild_projects", "start")
+		for _, proj := range plan.Projects {
+			safeCmds := rebuild.DeriveSafeCommands(proj.Type, proj.PackageManager)
+			if len(safeCmds) == 0 {
+				safeCmds = proj.RebuildCommands
+			}
+			for _, cmd := range safeCmds {
+				_ = rebuild.RunRebuild(rebuild.RebuildOptions{
+					ProjectPath: proj.TargetPath,
+					ProjectType: proj.Type,
+					Command:     cmd,
+					Emitter:     emitter,
+				})
+			}
+		}
+		emitter.Phase("rebuild_projects", "complete")
+	}
 
 	emitter.Phase("restore_files", "complete")
 	return report, nil

@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Milestone M5: Rebuild Runner (Allowlist) & Shell Framework Reinstall
+- Created strict rebuild command allowlist (`engine/internal/rebuild/allowlist.go`) for Node, Python, Rust, Go, Flutter, Gradle, Maven, PHP, Ruby, .NET, and Docker Compose.
+- Implemented command re-derivation from detected project types, rejecting arbitrary free-text manifest scripts unless custom commands are authorized.
+- Implemented rebuild execution runner (`engine/internal/rebuild/runner.go`) with project working directories, timeouts, and live event progress streaming.
+- Built shell framework automated installer (`engine/internal/rebuild/frameworks.go`) restoring `nvm`, `oh-my-zsh`, `oh-my-bash`, `pyenv`, `rbenv`, `asdf`, and `starship` before shell rc placement.
+- Integrated project rebuilding and framework restoration directly into the restore pipeline.
+
 ### Added - Milestone M4: Package Mapper, Cross-Distro Installers & Privilege Escalation
 - Created curated cross-distro package mapping catalog in `engine/internal/mapper/data/packages.yaml`.
 - Implemented package resolution order: curated catalog -> naming transforms (`-dev`/`-devel`, `python3-`/`python-`) -> repo-same fallback with confidence scoring.

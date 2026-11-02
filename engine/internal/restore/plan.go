@@ -53,15 +53,26 @@ type PermissionPlanItem struct {
 	Mode os.FileMode `json:"mode"`
 }
 
+// ProjectPlanItem details a project restore and rebuild recipe
+type ProjectPlanItem struct {
+	Path            string   `json:"path"`
+	TargetPath      string   `json:"target_path"`
+	Type            string   `json:"type"`
+	PackageManager  string   `json:"package_manager,omitempty"`
+	RebuildCommands []string `json:"rebuild_commands"`
+}
+
 // RestorePlan holds the dry run / planned actions before execution
 type RestorePlan struct {
-	SnapshotID     string               `json:"snapshot_id"`
-	SourceOS       manifest.SourceOS    `json:"source_os"`
-	ConflictPolicy ConflictPolicy       `json:"conflict_policy"`
-	Timestamp      string               `json:"timestamp"`
-	Files          []FilePlanItem       `json:"files"`
-	Dotfiles       []DotfilePlanItem    `json:"dotfiles"`
-	Permissions    []PermissionPlanItem `json:"permissions"`
+	SnapshotID      string               `json:"snapshot_id"`
+	SourceOS        manifest.SourceOS    `json:"source_os"`
+	ConflictPolicy  ConflictPolicy       `json:"conflict_policy"`
+	Timestamp       string               `json:"timestamp"`
+	Files           []FilePlanItem       `json:"files"`
+	Dotfiles        []DotfilePlanItem    `json:"dotfiles"`
+	Projects        []ProjectPlanItem    `json:"projects"`
+	ShellFrameworks []string             `json:"shell_frameworks"`
+	Permissions     []PermissionPlanItem `json:"permissions"`
 }
 
 // BuildRestorePlan constructs an actionable restore plan given a manifest and target home directory
@@ -176,7 +187,24 @@ func BuildRestorePlan(
 		}
 	}
 
-	// 3. Plan SSH Permission Hardening
+	// 3. Plan Projects
+	if includeAll || filterMap["projects"] {
+		for _, proj := range m.Projects {
+			targetPath := filepath.Join(targetHome, proj.Path)
+			plan.Projects = append(plan.Projects, ProjectPlanItem{
+				Path:            proj.Path,
+				TargetPath:      targetPath,
+				Type:            proj.Type,
+				PackageManager:  proj.PackageManager,
+				RebuildCommands: proj.Rebuild,
+			})
+		}
+	}
+
+	// 4. Plan Shell Frameworks
+	plan.ShellFrameworks = m.Shell.Frameworks
+
+	// 5. Plan SSH Permission Hardening
 	sshDir := filepath.Join(targetHome, ".ssh")
 	plan.Permissions = append(plan.Permissions, PermissionPlanItem{
 		Path: sshDir,
