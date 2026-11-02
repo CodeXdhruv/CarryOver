@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/carryover/carryover/engine/internal/backup"
+	"github.com/carryover/carryover/engine/internal/doctor"
 	"github.com/carryover/carryover/engine/internal/events"
+	"github.com/carryover/carryover/engine/internal/export"
 	"github.com/carryover/carryover/engine/internal/manifest"
 	"github.com/carryover/carryover/engine/internal/mapper"
 	"github.com/carryover/carryover/engine/internal/restore"
@@ -100,26 +102,22 @@ func main() {
 	mapCmd.Flags().String("from", "apt", "Source package manager")
 	mapCmd.Flags().String("to", "pacman", "Target package manager")
 
-	// export placeholder
+	// export command
 	exportCmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export migration recipe into other formats (e.g. Ansible)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("export will be initialized in milestone M8/M9")
-		},
+		RunE:  runExport,
 	}
-	exportCmd.Flags().String("format", "ansible", "Export format")
+	exportCmd.Flags().String("manifest", "", "Path to manifest.yaml (defaults to scanning current system)")
+	exportCmd.Flags().String("format", "ansible", "Export format: ansible")
+	exportCmd.Flags().String("target-pm", "", "Target package manager (apt/dnf/pacman/zypper)")
 	exportCmd.Flags().String("out", "playbook.yml", "Output file")
 
-	// doctor placeholder
+	// doctor command
 	doctorCmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check system prerequisites (restic, privileges, disk space)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("Carryover doctor check:")
-			fmt.Printf("OS: %s\n", rootFlag)
-			return nil
-		},
+		RunE:  runDoctor,
 	}
 
 	rootCmd.AddCommand(scanCmd, backupCmd, restoreCmd, listCmd, verifyCmd, mapCmd, exportCmd, doctorCmd)
@@ -580,6 +578,81 @@ func runMap(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Confidence:  %s\n", res.Confidence)
 		fmt.Printf("Auto-Select: %t\n", res.AutoSelect)
 		fmt.Printf("Reason:      %s\n", res.Reason)
+	}
+	return nil
+}
+
+func runExport(cmd *cobra.Command, args []string) error {
+	manifestPath, _ := cmd.Flags().GetString("manifest")
+	targetPM, _ := cmd.Flags().GetString("target-pm")
+	outFile, _ := cmd.Flags().GetString("out")
+
+	var m *manifest.Manifest
+	var err error
+
+	if manifestPath != "" {
+		m, err = manifest.LoadYAML(manifestPath)
+		if err != nil {
+			return fmt.Errorf("failed to load manifest from %s: %w", manifestPath, err)
+		}
+	} else {
+		opts := scanner.ScanOptions{
+			RootDir: rootFlag,
+			HomeDir: homeFlag,
+		}
+		m, err = scanner.ScanSystem(opts)
+		if err != nil {
+			return fmt.Errorf("failed to scan system for export: %w", err)
+		}
+	}
+
+	playbook, err := export.GenerateAnsiblePlaybook(m, targetPM)
+	if err != nil {
+		return fmt.Errorf("failed to generate playbook: %w", err)
+	}
+
+	if outFile == "-" || outFile == "" {
+		fmt.Print(playbook)
+	} else {
+		if err := os.WriteFile(outFile, []byte(playbook), 0644); err != nil {
+			return fmt.Errorf("failed to write export to %s: %w", outFile, err)
+		}
+		if jsonFlag {
+			data, _ := json.Marshal(map[string]string{"status": "ok", "out": outFile})
+			fmt.Println(string(data))
+		} else {
+			fmt.Printf("Ansible playbook exported successfully to: %s\n", outFile)
+		}
+	}
+	return nil
+}
+
+func runDoctor(cmd *cobra.Command, args []string) error {
+	report, err := doctor.RunDiagnostics(homeFlag)
+	if err != nil {
+		return fmt.Errorf("doctor check failed: %w", err)
+	}
+
+	if jsonFlag {
+		data, _ := json.Marshal(report)
+		fmt.Println(string(data))
+	} else {
+		fmt.Println("Carryover System Diagnostics:")
+		fmt.Println("-----------------------------")
+		for _, c := range report.Checks {
+			icon := "✓"
+			if c.Status == doctor.StatusWarn {
+				icon = "⚠"
+			} else if c.Status == doctor.StatusFail {
+				icon = "✕"
+			}
+			fmt.Printf("[%s] %-22s: %s\n", icon, c.Name, c.Message)
+			if c.Details != "" && c.Status != doctor.StatusPass {
+				fmt.Printf("    Details: %s\n", c.Details)
+			}
+		}
+		fmt.Println("-----------------------------")
+		fmt.Printf("Overall Status: %s\n", strings.ToUpper(string(report.OverallStatus)))
 	}
 	return nil
 }

@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Milestone M9: System Doctor, Ansible Export & Polish
+- Implemented `carryover doctor` (`engine/internal/doctor/doctor.go`) validating restic binary, pkexec/sudo elevation, filesystem disk space, SSH key permission hardening, and native package managers.
+- Added structured JSON diagnostics output (`carryover doctor --json`).
+- Implemented `carryover export --format ansible --out playbook.yml` (`engine/internal/export/ansible.go`) generating idempotent Ansible playbooks from scanned or loaded manifests.
+- Added native system package provisioning tasks for `apt`, `dnf`, `pacman`, and `zypper`.
+- Added user-level Flatpak installation tasks and developer project build recipe triggers.
+- Verified system against all specification acceptance criteria with 100% test pass rate.
 ### Added - Milestone M8: Docker Lab & Continuous Integration
 - Created multi-distribution test environments in `docker/`: Ubuntu 24.04 (`Dockerfile.ubuntu`), Fedora 40 (`Dockerfile.fedora`), and Arch Linux (`Dockerfile.arch`).
 - Created Docker Compose orchestration (`docker/docker-compose.yml`) for cross-distro migration verification with shared volumes.
