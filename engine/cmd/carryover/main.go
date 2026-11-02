@@ -11,6 +11,7 @@ import (
 	"github.com/carryover/carryover/engine/internal/backup"
 	"github.com/carryover/carryover/engine/internal/events"
 	"github.com/carryover/carryover/engine/internal/manifest"
+	"github.com/carryover/carryover/engine/internal/mapper"
 	"github.com/carryover/carryover/engine/internal/restore"
 	"github.com/carryover/carryover/engine/internal/scanner"
 	"github.com/spf13/cobra"
@@ -89,13 +90,12 @@ func main() {
 	verifyCmd.Flags().String("password-file", "", "Path to password file")
 	verifyCmd.Flags().String("password", "", "Backup encryption password")
 
-	// map placeholder
+	// map command
 	mapCmd := &cobra.Command{
 		Use:   "map <pkg>",
 		Short: "Debug package name mapping between distributions",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("package mapper will be initialized in milestone M4")
-		},
+		Args:  cobra.ExactArgs(1),
+		RunE:  runMap,
 	}
 	mapCmd.Flags().String("from", "apt", "Source package manager")
 	mapCmd.Flags().String("to", "pacman", "Target package manager")
@@ -554,5 +554,28 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	return nil
+}
+
+func runMap(cmd *cobra.Command, args []string) error {
+	pkgName := args[0]
+	fromPM, _ := cmd.Flags().GetString("from")
+	toPM, _ := cmd.Flags().GetString("to")
+
+	m := mapper.NewMapper()
+	res := m.Resolve(pkgName, fromPM, toPM)
+
+	if jsonFlag {
+		data, _ := json.Marshal(res)
+		fmt.Println(string(data))
+	} else {
+		fmt.Printf("Package Mapping Resolution:\n")
+		fmt.Printf("---------------------------\n")
+		fmt.Printf("Source:      %s (%s)\n", res.OriginalName, res.FromPM)
+		fmt.Printf("Target:      %s (%s)\n", res.TargetName, res.ToPM)
+		fmt.Printf("Confidence:  %s\n", res.Confidence)
+		fmt.Printf("Auto-Select: %t\n", res.AutoSelect)
+		fmt.Printf("Reason:      %s\n", res.Reason)
+	}
 	return nil
 }

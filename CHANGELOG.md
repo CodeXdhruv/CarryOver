@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Milestone M4: Package Mapper, Cross-Distro Installers & Privilege Escalation
+- Created curated cross-distro package mapping catalog in `engine/internal/mapper/data/packages.yaml`.
+- Implemented package resolution order: curated catalog -> naming transforms (`-dev`/`-devel`, `python3-`/`python-`) -> repo-same fallback with confidence scoring.
+- Implemented user-customizable mapping overrides from `~/.config/carryover/mappings.yaml`.
+- Created privilege elevation module (`engine/internal/privilege/privilege.go`) wrapping `pkexec` (and fallback `sudo`) with user command preview and event emissions.
+- Created batched package installers (`engine/internal/installer/installer.go`) for `apt`, `dnf`, `pacman`, `zypper`, `flatpak`, `snap`, `npm`, `pip`, `cargo`, and `code`.
+- Implemented CLI command `carryover map <pkg> --from <pm> --to <pm> [--json]`.
+
 ### Added - Milestone M3: Restore Engine, Conflict Management & Dotfile Merge
 - Built dry-run restore planner (`engine/internal/restore/plan.go`) with conflict detection against target `$HOME`.
 - Implemented `ConflictKeepBoth` policy: automatically moves existing target files to timestamped directory `~/.carryover-old/<timestamp>/<relpath>`.
