@@ -1,10 +1,10 @@
 [Desktop Entry]
 Name=Carryover
-Comment=Linux OS Migration Application
-Exec=carryover %u
+Comment=Linux OS Migration & Backup Application
+Exec=carryover-gui %u
 Icon=carryover
 Terminal=false
 Type=Application
 Categories=Utility;System;Archiving;
 Keywords=backup;restore;migration;linux;
-StartupWMClass=carryover
+StartupWMClass=dev.carryover.Desktop
