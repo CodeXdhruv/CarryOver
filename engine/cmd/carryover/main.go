@@ -6,10 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/carryover/carryover/engine/internal/backup"
 	"github.com/carryover/carryover/engine/internal/events"
 	"github.com/carryover/carryover/engine/internal/manifest"
+	"github.com/carryover/carryover/engine/internal/restore"
 	"github.com/carryover/carryover/engine/internal/scanner"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +31,8 @@ func main() {
 	}
 
 	rootCmd.PersistentFlags().BoolVar(&jsonFlag, "json", false, "Output newline-delimited JSON events")
+	rootCmd.PersistentFlags().StringVar(&rootFlag, "root", "/", "Root filesystem path (useful for containers/testing)")
+	rootCmd.PersistentFlags().StringVar(&homeFlag, "home", "", "User home directory path (useful for containers/testing)")
 
 	// scan command
 	scanCmd := &cobra.Command{
@@ -37,8 +41,6 @@ func main() {
 		RunE:  runScan,
 	}
 	scanCmd.Flags().StringVar(&outFlag, "out", "", "Output path for the scan manifest (e.g. scan.json or scan.yaml)")
-	scanCmd.Flags().StringVar(&rootFlag, "root", "/", "Root filesystem path for scanning (useful for containers/testing)")
-	scanCmd.Flags().StringVar(&homeFlag, "home", "", "User home directory path for scanning")
 
 	// backup command
 	backupCmd := &cobra.Command{
@@ -52,19 +54,20 @@ func main() {
 	backupCmd.Flags().String("password", "", "Backup encryption password")
 	backupCmd.Flags().Bool("dry-run", false, "Simulate backup without writing data")
 
-	// restore placeholder
+	// restore command
 	restoreCmd := &cobra.Command{
 		Use:   "restore",
 		Short: "Restore files, apps, dotfiles, and projects from a backup",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("restore engine will be initialized in milestone M3")
-		},
+		RunE:  runRestore,
 	}
 	restoreCmd.Flags().String("dest", "", "Backup repository path")
 	restoreCmd.Flags().String("snapshot", "latest", "Snapshot ID or latest")
+	restoreCmd.Flags().String("password-file", "", "Path to password file")
+	restoreCmd.Flags().String("password", "", "Backup encryption password")
 	restoreCmd.Flags().Bool("plan-only", false, "Generate plan without restoring")
 	restoreCmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	restoreCmd.Flags().String("only", "", "Comma-separated list of items to restore: files,dotfiles,apps,projects")
+	restoreCmd.Flags().String("conflict", "keep_both", "Conflict policy: keep_both, overwrite, skip")
 
 	// list command
 	listCmd := &cobra.Command{
@@ -278,6 +281,7 @@ func runBackup(cmd *cobra.Command, args []string) error {
 		Manifest:     m,
 		DryRun:       dryRun,
 		Emitter:      emitter,
+		BaseDir:      homeFlag,
 	})
 	if err != nil {
 		if jsonFlag {
@@ -392,5 +396,163 @@ func runVerify(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("Repository %s verified successfully (10%% data subset checked).\n", dest)
 	}
+	return nil
+}
+
+func runRestore(cmd *cobra.Command, args []string) error {
+	dest, _ := cmd.Flags().GetString("dest")
+	if dest == "" {
+		return fmt.Errorf("--dest is required")
+	}
+	snapshotID, _ := cmd.Flags().GetString("snapshot")
+	passwordFile, _ := cmd.Flags().GetString("password-file")
+	password, _ := cmd.Flags().GetString("password")
+	planOnly, _ := cmd.Flags().GetBool("plan-only")
+	onlyFilter, _ := cmd.Flags().GetString("only")
+	conflictStr, _ := cmd.Flags().GetString("conflict")
+
+	if password == "" && passwordFile == "" {
+		password = os.Getenv("RESTIC_PASSWORD")
+	}
+	if password == "" && passwordFile == "" {
+		return fmt.Errorf("either --password, --password-file, or RESTIC_PASSWORD env var is required")
+	}
+
+	emitter := events.NewEmitter(os.Stdout, jsonFlag)
+
+	runner, err := backup.NewResticRunner("")
+	if err != nil {
+		return err
+	}
+
+	pwFile := passwordFile
+	var cleanupPw bool
+	if pwFile == "" {
+		tmp, err := os.CreateTemp("", "carryover-pw-*")
+		if err != nil {
+			return err
+		}
+		pwFile = tmp.Name()
+		cleanupPw = true
+		_, _ = tmp.WriteString(password)
+		_ = tmp.Close()
+	}
+	if cleanupPw {
+		defer os.Remove(pwFile)
+	}
+
+	// 1. Resolve snapshot ID if "latest"
+	if snapshotID == "latest" {
+		snapshots, err := runner.ListSnapshots(dest, pwFile)
+		if err != nil {
+			return fmt.Errorf("failed to list snapshots: %w", err)
+		}
+		if len(snapshots) == 0 {
+			return fmt.Errorf("no snapshots found in repository %s", dest)
+		}
+		snapshotID = snapshots[len(snapshots)-1].ID
+	}
+
+	// 2. Extract snapshot to temporary staging directory
+	stagingDir, err := os.MkdirTemp("", "carryover-restore-stage-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stagingDir)
+
+	emitter.Progress("restore", 10, 0, 0, "Extracting snapshot metadata")
+	if err := restore.RestoreSnapshotToStaging(runner, dest, snapshotID, pwFile, stagingDir); err != nil {
+		return err
+	}
+
+	// 3. Locate manifest.yaml in stagingDir
+	var manifestPath string
+	_ = filepath.Walk(stagingDir, func(path string, info os.FileInfo, err error) error {
+		if err == nil && filepath.Base(path) == "manifest.yaml" {
+			manifestPath = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if manifestPath == "" {
+		return fmt.Errorf("manifest.yaml not found in snapshot %s", snapshotID)
+	}
+
+	m, err := manifest.LoadYAML(manifestPath)
+	if err != nil {
+		return fmt.Errorf("failed to load manifest from snapshot: %w", err)
+	}
+
+	targetHome := homeFlag
+	if targetHome == "" {
+		targetHome, err = os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+	}
+
+	policy := restore.ConflictPolicy(conflictStr)
+	timestamp := time.Now().UTC().Format("20060102T150405Z")
+
+	// 4. Build restore plan
+	plan, err := restore.BuildRestorePlan(m, snapshotID, targetHome, policy, true, timestamp, onlyFilter)
+	if err != nil {
+		return err
+	}
+
+	if planOnly {
+		if jsonFlag {
+			data, _ := json.Marshal(plan)
+			fmt.Println(string(data))
+		} else {
+			fmt.Printf("Carryover Restore Plan (Dry Run)\n")
+			fmt.Printf("--------------------------------\n")
+			fmt.Printf("Snapshot ID:     %s\n", plan.SnapshotID)
+			fmt.Printf("Source OS:       %s %s\n", plan.SourceOS.OSID, plan.SourceOS.OSVersion)
+			fmt.Printf("Conflict Policy: %s\n", plan.ConflictPolicy)
+			fmt.Printf("Planned Files:   %d\n", len(plan.Files))
+			for _, f := range plan.Files {
+				status := "NEW"
+				if f.Conflict {
+					status = fmt.Sprintf("CONFLICT (%s)", f.Action)
+				}
+				fmt.Printf("  - %-25s -> %s [%s]\n", f.RelPath, f.TargetPath, status)
+			}
+			fmt.Printf("Planned Dotfiles:%d\n", len(plan.Dotfiles))
+			for _, d := range plan.Dotfiles {
+				mode := "PLACE"
+				if d.Merge {
+					mode = "MERGE"
+				}
+				fmt.Printf("  - %-25s [%s]\n", d.RelPath, mode)
+			}
+		}
+		return nil
+	}
+
+	// 5. Execute restore plan
+	report, err := restore.ExecuteRestorePlan(plan, stagingDir, targetHome, emitter)
+	if err != nil {
+		return err
+	}
+
+	if jsonFlag {
+		data, _ := json.Marshal(report)
+		fmt.Println(string(data))
+		emitter.Done("ok", "")
+	} else {
+		fmt.Println("Carryover Restore Complete")
+		fmt.Println("--------------------------")
+		fmt.Printf("Restored Files:  %d\n", len(report.RestoredFiles))
+		fmt.Printf("Merged Dotfiles: %d\n", len(report.MergedDotfiles))
+		fmt.Printf("Conflicts:       %d\n", len(report.ConflictedFiles))
+		if len(report.ConflictedFiles) > 0 && report.OldBackupDir != "" {
+			fmt.Printf("Old copies moved to: %s\n", report.OldBackupDir)
+		}
+		if len(report.FailedItems) > 0 {
+			fmt.Printf("Failed Items:    %d\n", len(report.FailedItems))
+		}
+	}
+
 	return nil
 }

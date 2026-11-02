@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Milestone M3: Restore Engine, Conflict Management & Dotfile Merge
+- Built dry-run restore planner (`engine/internal/restore/plan.go`) with conflict detection against target `$HOME`.
+- Implemented `ConflictKeepBoth` policy: automatically moves existing target files to timestamped directory `~/.carryover-old/<timestamp>/<relpath>`.
+- Implemented non-destructive dotfile merge mode for `.bashrc`, `.zshrc`, and `.profile` using marker block `# >>> carryover restored >>>`.
+- Implemented file permission hardening during restore (`0700` on `~/.ssh`, `0600` on private keys).
+- Implemented CLI `carryover restore` supporting `--snapshot`, `--plan-only`, `--only`, `--conflict`, and `--json`.
+- Added end-to-end integration test (`tests/integration/backup_restore_test.go`) validating backup, restore, conflict movement, dotfile merge, and permissions.
+
 ### Added - Milestone M2: Restic Backup Core, Excludes & Events
 - Bundled and integrated restic 0.17.0 wrapper (`engine/internal/backup/restic.go`).
 - Implemented secure temporary password handling preventing command line and process table leakage.
