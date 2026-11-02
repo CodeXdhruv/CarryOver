@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Milestone M6: Tauri Desktop UI & Design System
+- Built Tauri 2 desktop application scaffold with Svelte, TypeScript, Vite, and Tailwind CSS.
+- Implemented design system adhering to specification: minimal aesthetics, Inter typography, `#4F7CFF` accent token, 12px radius, auto light/dark theme, and 880×620 window constraints.
+- Built `HomeScreen` featuring primary action cards, quick status, and automatic USB backup detection banner.
+- Built `BackupScreen` 4-stage guided wizard: live scanning progress, multi-tab category selection (Files, Apps, Dotfiles, Projects) with skip savings indicator, password strength meter, and progress monitoring with verified completion card.
+- Built `RestoreScreen` 4-stage guided wizard: public metadata inspection (`manifest.public.json`), repository password unlock, package mapping preview chips (✓ matched, ⚠ suggested, ✕ unmapped), migration score, conflict policy selection, elevation explanation modal, and phase checklist with live status ticks.
+- Built `SettingsScreen` with theme toggle, default destination, exclusion editor, mapping overrides editor, and security toggle.
+- Created `EngineBridge` streaming engine events over stdout to UI stores.
+
 ### Added - Milestone M5: Rebuild Runner (Allowlist) & Shell Framework Reinstall
 - Created strict rebuild command allowlist (`engine/internal/rebuild/allowlist.go`) for Node, Python, Rust, Go, Flutter, Gradle, Maven, PHP, Ruby, .NET, and Docker Compose.
 - Implemented command re-derivation from detected project types, rejecting arbitrary free-text manifest scripts unless custom commands are authorized.

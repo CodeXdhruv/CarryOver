@@ -6,9 +6,14 @@ BINARY := $(BIN_DIR)/carryover
 
 all: build test
 
-build:
+build: build-engine build-ui
+
+build-engine:
 	@mkdir -p $(BIN_DIR)
 	cd engine && $(GO) build -o ../$(BINARY) ./cmd/carryover
+
+build-ui:
+	cd ui && npm run build
 
 test:
 	cd engine && $(GO) test -v -race ./...
